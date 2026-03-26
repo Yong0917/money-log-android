@@ -1,0 +1,21 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Base.Theme.MoneyLogs" parent="Theme.Material3.DayNight.NoActionBar">
+        <!-- Customize your light theme here. -->
+        <!-- <item name="colorPrimary">@color/my_light_primary</item> -->
+    </style>
+
+    <style name="Theme.MoneyLogs" parent="Base.Theme.MoneyLogs">
+        <item name="android:windowBackground">@color/bg_light</item>
+    </style>
+
+    <!-- 스플래시 스크린 테마: 앱 실행 시 로고 + 배경 표시 -->
+    <style name="Theme.MoneyLogs.Splash" parent="Theme.SplashScreen">
+        <!-- 스플래시 배경색: 웹앱 라이트 배경과 동일 -->
+        <item name="windowSplashScreenBackground">@color/bg_light</item>
+        <!-- 스플래시 아이콘: 앱 런처 아이콘 전경 사용 -->
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <!-- 스플래시 종료 후 적용할 실제 앱 테마 -->
+        <item name="postSplashScreenTheme">@style/Theme.MoneyLogs</item>
+    </style>
+</resources>
