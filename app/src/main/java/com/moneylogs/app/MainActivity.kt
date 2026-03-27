@@ -81,6 +81,18 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
+                // 웹앱이 Android 래퍼 내부 실행임을 안정적으로 감지할 수 있도록 플래그 주입
+                view.evaluateJavascript(
+                    """
+                        (function() {
+                          window.__MONEYLOGS_ANDROID_APP__ = true;
+                          try {
+                            localStorage.setItem('moneylogs:platform', 'android');
+                          } catch (e) {}
+                        })();
+                    """.trimIndent(),
+                    null
+                )
                 // 웹 로드 완료 → 오버레이를 300ms에 걸쳐 페이드아웃
                 loadingOverlay.animate()
                     .alpha(0f)
