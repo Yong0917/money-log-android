@@ -69,22 +69,6 @@ class MainActivity : AppCompatActivity() {
                 view: WebView,
                 request: WebResourceRequest
             ): Boolean {
-                val url = request.url.toString()
-                // OAuth 시작 URL은 Auth Tab으로 열어 인증 완료 후 앱 콜백을 안정적으로 수신
-                if (
-                    url.contains(".supabase.co/auth/v1/authorize")
-                    || url.startsWith("https://accounts.google.com")
-                ) {
-                    isOAuthInProgress = true
-                    AuthTabIntent.Builder()
-                        .build()
-                        .launch(
-                            authTabLauncher,
-                            request.url,
-                            "com.moneylogs.app"
-                        )
-                    return true
-                }
                 return false
             }
 
@@ -226,6 +210,20 @@ class MainActivity : AppCompatActivity() {
     inner class AndroidBridge {
         @android.webkit.JavascriptInterface
         fun getPlatform(): String = "android"
+
+        @android.webkit.JavascriptInterface
+        fun openAuth(url: String) {
+            runOnUiThread {
+                isOAuthInProgress = true
+                AuthTabIntent.Builder()
+                    .build()
+                    .launch(
+                        authTabLauncher,
+                        Uri.parse(url),
+                        "com.moneylogs.app"
+                    )
+            }
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
