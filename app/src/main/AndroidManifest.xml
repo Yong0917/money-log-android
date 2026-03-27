@@ -26,18 +26,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Google OAuth 콜백 App Link: Chrome Custom Tab → WebView로 전달 -->
-            <intent-filter android:autoVerify="true">
-                <action android:name="android.intent.action.VIEW" />
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="https"
-                    android:host="moneylogs.vercel.app"
-                    android:pathPrefix="/auth/callback" />
-            </intent-filter>
-
-            <!-- 서버 세션 교환 완료 후 앱으로 복귀하는 커스텀 스킴 -->
+            <!-- OAuth 결과를 앱으로 복귀시키는 커스텀 스킴 -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -45,9 +34,6 @@
                 <data
                     android:scheme="com.moneylogs.app"
                     android:host="auth-callback" />
-                <data
-                    android:scheme="com.moneylogs.app"
-                    android:host="done" />
             </intent-filter>
 
         </activity>

@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.view.View
 import android.webkit.CookieManager
@@ -15,7 +16,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.browser.customtabs.CustomTabsIntent
+import androidx.browser.auth.AuthTabIntent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateOptions
@@ -29,8 +30,9 @@ class MainActivity : AppCompatActivity() {
 
     // 업데이트 플로우 결과 수신 런처
     private lateinit var updateLauncher: ActivityResultLauncher<IntentSenderRequest>
+    private lateinit var authTabLauncher: ActivityResultLauncher<Intent>
 
-    // OAuth 진행 중 여부 추적 (Custom Tab → 앱 복귀 시 처리용)
+    // OAuth 진행 중 여부 추적 (Auth Tab → 앱 복귀 시 처리용)
     private var isOAuthInProgress = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -68,12 +70,19 @@ class MainActivity : AppCompatActivity() {
                 request: WebResourceRequest
             ): Boolean {
                 val url = request.url.toString()
-                // Google OAuth URL → Chrome Custom Tab으로 열기 (WebView 차단 우회)
-                if (url.startsWith("https://accounts.google.com")) {
+                // OAuth 시작 URL은 Auth Tab으로 열어 인증 완료 후 앱 콜백을 안정적으로 수신
+                if (
+                    url.contains(".supabase.co/auth/v1/authorize")
+                    || url.startsWith("https://accounts.google.com")
+                ) {
                     isOAuthInProgress = true
-                    CustomTabsIntent.Builder()
+                    AuthTabIntent.Builder()
                         .build()
-                        .launchUrl(this@MainActivity, request.url)
+                        .launch(
+                            authTabLauncher,
+                            request.url,
+                            "com.moneylogs.app"
+                        )
                     return true
                 }
                 return false
@@ -129,12 +138,24 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        authTabLauncher = AuthTabIntent.registerActivityResultLauncher(this) { result ->
+            isOAuthInProgress = false
+            if (result.resultCode == AuthTabIntent.RESULT_OK) {
+                result.resultUri?.let(::handleIncomingUri)
+            } else {
+                webView.reload()
+            }
+        }
+
         // Play Store 업데이트 체크
         checkForUpdate()
 
-        // App Link(OAuth 콜백)로 실행된 경우 해당 URL을 WebView에 로드
-        val startUrl = intent?.data?.toString() ?: "https://moneylogs.vercel.app/"
-        webView.loadUrl(startUrl)
+        // 딥링크/OAuth 콜백으로 실행된 경우 intent URL을 먼저 처리
+        if (intent?.data != null) {
+            handleIncomingUri(intent.data!!)
+        } else {
+            webView.loadUrl("https://moneylogs.vercel.app/")
+        }
     }
 
     private fun checkForUpdate() {
@@ -155,57 +176,48 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // Chrome Custom Tab에서 OAuth 완료 후 콜백 URL로 돌아올 때 호출됨
+    // OAuth 결과 딥링크로 앱이 다시 열릴 때 호출됨
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         isOAuthInProgress = false  // 콜백 정상 수신
         intent.data?.let { uri ->
-            if (uri.scheme == "com.moneylogs.app") {
-                when (uri.host) {
-                    "auth-callback" -> {
-                        // OAuth 완료 후 Custom Tab이 앱 딥링크로 복귀하면,
-                        // code를 WebView의 웹 콜백으로 전달하여 서버에서 세션 교환 수행
-                        val callbackUrl = buildString {
-                            append("https://moneylogs.vercel.app/auth/callback")
-                            append("?code=").append(android.net.Uri.encode(uri.getQueryParameter("code") ?: ""))
+            handleIncomingUri(uri)
+        }
+    }
 
-                            uri.getQueryParameter("next")?.let { next ->
-                                append("&next=").append(android.net.Uri.encode(next))
-                            }
-                            uri.getQueryParameter("error")?.let { error ->
-                                append("&error=").append(android.net.Uri.encode(error))
-                            }
-                            uri.getQueryParameter("error_code")?.let { errorCode ->
-                                append("&error_code=").append(android.net.Uri.encode(errorCode))
-                            }
-                            uri.getQueryParameter("error_description")?.let { errorDescription ->
-                                append("&error_description=").append(android.net.Uri.encode(errorDescription))
-                            }
+    private fun handleIncomingUri(uri: Uri) {
+        if (uri.scheme == "com.moneylogs.app") {
+            when (uri.host) {
+                "auth-callback" -> {
+                    // OAuth 완료 후 Auth Tab이 앱 딥링크로 복귀하면,
+                    // code를 WebView의 웹 콜백으로 전달하여 서버에서 세션 교환 수행
+                    val callbackUrl = buildString {
+                        append("https://moneylogs.vercel.app/auth/callback")
+                        append("?code=").append(Uri.encode(uri.getQueryParameter("code") ?: ""))
 
-                            append("&android=1")
+                        uri.getQueryParameter("next")?.let { next ->
+                            append("&next=").append(Uri.encode(next))
                         }
-                        webView.loadUrl(callbackUrl)
-                    }
+                        uri.getQueryParameter("error")?.let { error ->
+                            append("&error=").append(Uri.encode(error))
+                        }
+                        uri.getQueryParameter("error_code")?.let { errorCode ->
+                            append("&error_code=").append(Uri.encode(errorCode))
+                        }
+                        uri.getQueryParameter("error_description")?.let { errorDescription ->
+                            append("&error_description=").append(Uri.encode(errorDescription))
+                        }
 
-                    "done" -> {
-                        // Chrome Custom Tab에서 받은 세션 토큰을 WebView의 set-session 페이지로 전달
-                        // Chrome Custom Tab과 WebView는 쿠키가 공유되지 않으므로
-                        // WebView에서 직접 supabase.auth.setSession()을 호출해야 함
-                        val accessToken = uri.getQueryParameter("access_token") ?: ""
-                        val refreshToken = uri.getQueryParameter("refresh_token") ?: ""
-                        val next = uri.getQueryParameter("next") ?: "/ledger/daily"
-                        val setSessionUrl = "https://moneylogs.vercel.app/auth/set-session" +
-                            "?access_token=${android.net.Uri.encode(accessToken)}" +
-                            "&refresh_token=${android.net.Uri.encode(refreshToken)}" +
-                            "&next=${android.net.Uri.encode(next)}"
-                        webView.loadUrl(setSessionUrl)
+                        append("&android=1")
                     }
-
-                    else -> webView.loadUrl(uri.toString())
+                    webView.loadUrl(callbackUrl)
                 }
-            } else {
-                webView.loadUrl(uri.toString())
+
+                else -> webView.loadUrl(uri.toString())
             }
+        } else {
+            webView.loadUrl(uri.toString())
         }
     }
 
@@ -228,8 +240,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // OAuth 중에 Custom Tab이 닫혔지만 App Link 콜백이 오지 않은 경우
-        // (사용자 취소 또는 App Link 미작동) → 로그인 페이지 새로고침으로 버튼 활성화
+        // OAuth 중에 Auth Tab이 닫혔지만 콜백이 오지 않은 경우
+        // (사용자 취소 등) → 로그인 페이지 새로고침으로 버튼 활성화
         if (isOAuthInProgress) {
             isOAuthInProgress = false
             webView.reload()
