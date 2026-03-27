@@ -58,6 +58,8 @@ class MainActivity : AppCompatActivity() {
             loadWithOverviewMode = true
             useWideViewPort = true
             setSupportZoom(false)
+            // JS에서 User-Agent로 WebView 환경 감지 가능하도록 커스텀 문자열 추가
+            userAgentString = "$userAgentString MoneyLogsApp/Android"
         }
 
         webView.webViewClient = object : WebViewClient() {
@@ -146,18 +148,49 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         isOAuthInProgress = false  // 콜백 정상 수신
         intent.data?.let { uri ->
-            if (uri.scheme == "com.moneylogs.app" && uri.host == "done") {
-                // Chrome Custom Tab에서 받은 세션 토큰을 WebView의 set-session 페이지로 전달
-                // Chrome Custom Tab과 WebView는 쿠키가 공유되지 않으므로
-                // WebView에서 직접 supabase.auth.setSession()을 호출해야 함
-                val accessToken = uri.getQueryParameter("access_token") ?: ""
-                val refreshToken = uri.getQueryParameter("refresh_token") ?: ""
-                val next = uri.getQueryParameter("next") ?: "/ledger/daily"
-                val setSessionUrl = "https://moneylogs.vercel.app/auth/set-session" +
-                    "?access_token=${android.net.Uri.encode(accessToken)}" +
-                    "&refresh_token=${android.net.Uri.encode(refreshToken)}" +
-                    "&next=${android.net.Uri.encode(next)}"
-                webView.loadUrl(setSessionUrl)
+            if (uri.scheme == "com.moneylogs.app") {
+                when (uri.host) {
+                    "auth-callback" -> {
+                        // OAuth 완료 후 Custom Tab이 앱 딥링크로 복귀하면,
+                        // code를 WebView의 웹 콜백으로 전달하여 서버에서 세션 교환 수행
+                        val callbackUrl = buildString {
+                            append("https://moneylogs.vercel.app/auth/callback")
+                            append("?code=").append(android.net.Uri.encode(uri.getQueryParameter("code") ?: ""))
+
+                            uri.getQueryParameter("next")?.let { next ->
+                                append("&next=").append(android.net.Uri.encode(next))
+                            }
+                            uri.getQueryParameter("error")?.let { error ->
+                                append("&error=").append(android.net.Uri.encode(error))
+                            }
+                            uri.getQueryParameter("error_code")?.let { errorCode ->
+                                append("&error_code=").append(android.net.Uri.encode(errorCode))
+                            }
+                            uri.getQueryParameter("error_description")?.let { errorDescription ->
+                                append("&error_description=").append(android.net.Uri.encode(errorDescription))
+                            }
+
+                            append("&android=1")
+                        }
+                        webView.loadUrl(callbackUrl)
+                    }
+
+                    "done" -> {
+                        // Chrome Custom Tab에서 받은 세션 토큰을 WebView의 set-session 페이지로 전달
+                        // Chrome Custom Tab과 WebView는 쿠키가 공유되지 않으므로
+                        // WebView에서 직접 supabase.auth.setSession()을 호출해야 함
+                        val accessToken = uri.getQueryParameter("access_token") ?: ""
+                        val refreshToken = uri.getQueryParameter("refresh_token") ?: ""
+                        val next = uri.getQueryParameter("next") ?: "/ledger/daily"
+                        val setSessionUrl = "https://moneylogs.vercel.app/auth/set-session" +
+                            "?access_token=${android.net.Uri.encode(accessToken)}" +
+                            "&refresh_token=${android.net.Uri.encode(refreshToken)}" +
+                            "&next=${android.net.Uri.encode(next)}"
+                        webView.loadUrl(setSessionUrl)
+                    }
+
+                    else -> webView.loadUrl(uri.toString())
+                }
             } else {
                 webView.loadUrl(uri.toString())
             }
@@ -165,7 +198,11 @@ class MainActivity : AppCompatActivity() {
     }
 
     // 웹앱에 Android WebView 환경임을 알리는 브릿지
-    inner class AndroidBridge
+    // @JavascriptInterface 메서드가 없으면 JS에서 객체가 노출되지 않으므로 반드시 메서드 필요
+    inner class AndroidBridge {
+        @android.webkit.JavascriptInterface
+        fun getPlatform(): String = "android"
+    }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)

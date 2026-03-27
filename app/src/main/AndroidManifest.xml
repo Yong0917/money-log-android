@@ -44,6 +44,9 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data
                     android:scheme="com.moneylogs.app"
+                    android:host="auth-callback" />
+                <data
+                    android:scheme="com.moneylogs.app"
                     android:host="done" />
             </intent-filter>
 
