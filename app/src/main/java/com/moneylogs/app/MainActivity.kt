@@ -16,7 +16,7 @@ import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.browser.auth.AuthTabIntent
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateOptions
@@ -30,10 +30,6 @@ class MainActivity : AppCompatActivity() {
 
     // 업데이트 플로우 결과 수신 런처
     private lateinit var updateLauncher: ActivityResultLauncher<IntentSenderRequest>
-    private lateinit var authTabLauncher: ActivityResultLauncher<Intent>
-
-    // OAuth 진행 중 여부 추적 (Auth Tab → 앱 복귀 시 처리용)
-    private var isOAuthInProgress = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // 스플래시 스크린 설치 — setContentView 전에 호출해야 함
@@ -69,6 +65,14 @@ class MainActivity : AppCompatActivity() {
                 view: WebView,
                 request: WebResourceRequest
             ): Boolean {
+                val url = request.url.toString()
+                // Google OAuth URL은 WebView 대신 Chrome Custom Tabs으로 열어야 함
+                // WebView에서 열면 Google 정책상 Error 403: disallowed_useragent 발생
+                if (url.contains("accounts.google.com")) {
+                    val customTabsIntent = CustomTabsIntent.Builder().build()
+                    customTabsIntent.launchUrl(this@MainActivity, request.url)
+                    return true
+                }
                 return false
             }
 
@@ -122,15 +126,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        authTabLauncher = AuthTabIntent.registerActivityResultLauncher(this) { result ->
-            isOAuthInProgress = false
-            if (result.resultCode == AuthTabIntent.RESULT_OK) {
-                result.resultUri?.let(::handleIncomingUri)
-            } else {
-                webView.reload()
-            }
-        }
-
         // Play Store 업데이트 체크
         checkForUpdate()
 
@@ -164,7 +159,6 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        isOAuthInProgress = false  // 콜백 정상 수신
         intent.data?.let { uri ->
             handleIncomingUri(uri)
         }
@@ -174,7 +168,7 @@ class MainActivity : AppCompatActivity() {
         if (uri.scheme == "com.moneylogs.app") {
             when (uri.host) {
                 "auth-callback" -> {
-                    // OAuth 완료 후 Auth Tab이 앱 딥링크로 복귀하면,
+                    // OAuth 완료 후 딥링크로 앱에 복귀하면,
                     // code를 WebView의 웹 콜백으로 전달하여 서버에서 세션 교환 수행
                     val callbackUrl = buildString {
                         append("https://moneylogs.vercel.app/auth/callback")
@@ -210,20 +204,6 @@ class MainActivity : AppCompatActivity() {
     inner class AndroidBridge {
         @android.webkit.JavascriptInterface
         fun getPlatform(): String = "android"
-
-        @android.webkit.JavascriptInterface
-        fun openAuth(url: String) {
-            runOnUiThread {
-                isOAuthInProgress = true
-                AuthTabIntent.Builder()
-                    .build()
-                    .launch(
-                        authTabLauncher,
-                        Uri.parse(url),
-                        "com.moneylogs.app"
-                    )
-            }
-        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
@@ -238,12 +218,6 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // OAuth 중에 Auth Tab이 닫혔지만 콜백이 오지 않은 경우
-        // (사용자 취소 등) → 로그인 페이지 새로고침으로 버튼 활성화
-        if (isOAuthInProgress) {
-            isOAuthInProgress = false
-            webView.reload()
-        }
     }
 
     override fun onPause() {
