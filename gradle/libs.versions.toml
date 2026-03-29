@@ -1,5 +1,6 @@
 [versions]
 agp = "9.1.0"
+firebaseBom = "33.7.0"
 coreKtx = "1.10.1"
 coreSplashscreen = "1.0.1"
 junit = "4.13.2"
@@ -24,6 +25,9 @@ androidx-activity = { group = "androidx.activity", name = "activity", version.re
 androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "constraintlayout" }
 play-app-update-ktx = { group = "com.google.android.play", name = "app-update-ktx", version.ref = "playAppUpdate" }
 androidx-browser = { group = "androidx.browser", name = "browser", version.ref = "browser" }
+firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
+firebase-messaging-ktx = { group = "com.google.firebase", name = "firebase-messaging-ktx" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
+google-services = { id = "com.google.gms.google-services", version = "4.4.2" }
