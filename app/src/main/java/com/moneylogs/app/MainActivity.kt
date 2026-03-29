@@ -2,6 +2,7 @@ package com.moneylogs.app
 
 import android.Manifest
 import android.app.Activity
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -10,12 +11,18 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
+import android.util.Base64
 import android.view.View
 import android.webkit.CookieManager
+import android.webkit.JavascriptInterface
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
@@ -42,11 +49,25 @@ class MainActivity : AppCompatActivity() {
     // 알림 권한 요청 런처 (Android 13+)
     private lateinit var notificationPermissionLauncher: ActivityResultLauncher<String>
 
+    // 파일 선택 콜백 (엑셀 가져오기용)
+    private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
+    private lateinit var filePickerLauncher: ActivityResultLauncher<String>
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // 알림 권한 런처 초기화 (onCreate 초반부에 등록해야 함)
         notificationPermissionLauncher = registerForActivityResult(
             ActivityResultContracts.RequestPermission()
         ) { /* 허용/거부 결과 — 별도 처리 없이 FCM 토큰만 가져감 */ }
+
+        // 파일 선택 런처 초기화 (엑셀 가져오기: <input type="file"> 지원)
+        filePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            if (uri != null) {
+                fileUploadCallback?.onReceiveValue(arrayOf(uri))
+            } else {
+                fileUploadCallback?.onReceiveValue(null)
+            }
+            fileUploadCallback = null
+        }
 
         // 스플래시 스크린 설치 — setContentView 전에 호출해야 함
         installSplashScreen()
@@ -73,6 +94,21 @@ class MainActivity : AppCompatActivity() {
             setSupportZoom(false)
             // JS에서 User-Agent로 WebView 환경 감지 가능하도록 커스텀 문자열 추가
             userAgentString = "$userAgentString MoneyLogsApp/Android"
+        }
+
+        // 파일 선택 다이얼로그 처리 (엑셀 가져오기용 <input type="file"> 지원)
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(
+                webView: WebView,
+                filePathCallback: ValueCallback<Array<Uri>>,
+                fileChooserParams: FileChooserParams
+            ): Boolean {
+                // 이전 콜백이 남아있으면 취소 처리
+                fileUploadCallback?.onReceiveValue(null)
+                fileUploadCallback = filePathCallback
+                filePickerLauncher.launch("*/*")
+                return true
+            }
         }
 
         webView.webViewClient = object : WebViewClient() {
@@ -264,11 +300,11 @@ class MainActivity : AppCompatActivity() {
     class AndroidBridge(activity: MainActivity) {
         private val activityRef = WeakReference(activity)
 
-        @android.webkit.JavascriptInterface
+        @JavascriptInterface
         fun getPlatform(): String = "android"
 
         // 웹앱에서 호출 → SharedPreferences에 캐싱된 FCM 토큰 반환
-        @android.webkit.JavascriptInterface
+        @JavascriptInterface
         fun getFcmToken(): String {
             val activity = activityRef.get() ?: return ""
             return activity
@@ -277,6 +313,53 @@ class MainActivity : AppCompatActivity() {
                     Context.MODE_PRIVATE
                 )
                 .getString(MoneyLogsFirebaseMessagingService.KEY_FCM_TOKEN, "") ?: ""
+        }
+
+        // 웹앱에서 Base64 인코딩된 파일 데이터를 받아 Downloads 폴더에 저장
+        @JavascriptInterface
+        fun downloadFile(base64Data: String, filename: String, mimeType: String) {
+            val activity = activityRef.get() ?: return
+            try {
+                val decoded = Base64.decode(base64Data, Base64.DEFAULT)
+
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.Downloads.DISPLAY_NAME, filename)
+                    put(MediaStore.Downloads.MIME_TYPE, mimeType)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        put(MediaStore.Downloads.IS_PENDING, 1)
+                    }
+                }
+
+                val resolver = activity.contentResolver
+                val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+                } else {
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI
+                }
+
+                val uri = resolver.insert(collection, contentValues) ?: run {
+                    activity.runOnUiThread {
+                        Toast.makeText(activity, "파일 저장에 실패했습니다", Toast.LENGTH_SHORT).show()
+                    }
+                    return
+                }
+
+                resolver.openOutputStream(uri)?.use { it.write(decoded) }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    contentValues.clear()
+                    contentValues.put(MediaStore.Downloads.IS_PENDING, 0)
+                    resolver.update(uri, contentValues, null, null)
+                }
+
+                activity.runOnUiThread {
+                    Toast.makeText(activity, "📥 $filename 저장됨", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                activity.runOnUiThread {
+                    Toast.makeText(activity, "저장 실패: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
         }
     }
 
