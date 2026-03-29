@@ -1,10 +1,14 @@
 package com.moneylogs.app
 
+import android.Manifest
 import android.app.Activity
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.view.View
 import android.webkit.CookieManager
@@ -18,11 +22,13 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateOptions
 import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.UpdateAvailability
+import com.google.firebase.messaging.FirebaseMessaging
 import java.lang.ref.WeakReference
 
 class MainActivity : AppCompatActivity() {
@@ -33,7 +39,15 @@ class MainActivity : AppCompatActivity() {
     // 업데이트 플로우 결과 수신 런처
     private lateinit var updateLauncher: ActivityResultLauncher<IntentSenderRequest>
 
+    // 알림 권한 요청 런처 (Android 13+)
+    private lateinit var notificationPermissionLauncher: ActivityResultLauncher<String>
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // 알림 권한 런처 초기화 (onCreate 초반부에 등록해야 함)
+        notificationPermissionLauncher = registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { /* 허용/거부 결과 — 별도 처리 없이 FCM 토큰만 가져감 */ }
+
         // 스플래시 스크린 설치 — setContentView 전에 호출해야 함
         installSplashScreen()
 
@@ -146,6 +160,43 @@ class MainActivity : AppCompatActivity() {
         // Play Store 업데이트 체크
         checkForUpdate()
 
+        // 알림 권한 요청 (Android 13+) + FCM 토큰 캐싱
+        requestNotificationPermissionAndCacheToken()
+
+        // 알림 탭으로 앱이 열린 경우 해당 화면 딥링크
+        intent?.getStringExtra(MoneyLogsFirebaseMessagingService.EXTRA_SCREEN)?.let { screen ->
+            val recurringId = intent.getStringExtra(MoneyLogsFirebaseMessagingService.EXTRA_RECURRING_ID)
+            navigateWebViewToScreen(screen, recurringId)
+        }
+
+    }
+
+    private fun requestNotificationPermissionAndCacheToken() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                this, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!granted) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
+        }
+        // 권한 여부와 관계없이 토큰 캐싱 (토큰은 권한 없이도 발급됨)
+        FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
+            getSharedPreferences(MoneyLogsFirebaseMessagingService.PREFS_NAME, Context.MODE_PRIVATE)
+                .edit()
+                .putString(MoneyLogsFirebaseMessagingService.KEY_FCM_TOKEN, token)
+                .apply()
+        }
+    }
+
+    private fun navigateWebViewToScreen(screen: String, recurringId: String? = null) {
+        val url = buildString {
+            append("https://moneylogs.vercel.app")
+            append(screen)
+            if (recurringId != null) append("?openRecurring=${Uri.encode(recurringId)}")
+        }
+        webView.loadUrl(url)
     }
 
     private fun checkForUpdate() {
@@ -216,6 +267,18 @@ class MainActivity : AppCompatActivity() {
 
         @android.webkit.JavascriptInterface
         fun getPlatform(): String = "android"
+
+        // 웹앱에서 호출 → SharedPreferences에 캐싱된 FCM 토큰 반환
+        @android.webkit.JavascriptInterface
+        fun getFcmToken(): String {
+            val activity = activityRef.get() ?: return ""
+            return activity
+                .getSharedPreferences(
+                    MoneyLogsFirebaseMessagingService.PREFS_NAME,
+                    Context.MODE_PRIVATE
+                )
+                .getString(MoneyLogsFirebaseMessagingService.KEY_FCM_TOKEN, "") ?: ""
+        }
     }
 
     override fun onSaveInstanceState(outState: Bundle) {
