@@ -49,12 +49,7 @@ class MainActivity : AppCompatActivity() {
             if (isNightMode) Color.parseColor("#121317") else Color.parseColor("#FAF8F5")
         )
 
-        // 웹앱에서 Android WebView 환경 감지 및 커스텀 스킴 제공
-        webView.addJavascriptInterface(AndroidBridge(this), "AndroidBridge")
-
-        // WebView 엔진 미리 초기화 — 첫 실제 URL 로드 전 엔진 워밍업으로 지연 단축
-        webView.loadUrl("about:blank")
-
+        // settings를 먼저 적용해야 loadUrl 시점에 모든 설정이 유효함
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
@@ -86,8 +81,6 @@ class MainActivity : AppCompatActivity() {
             override fun onPageCommitVisible(view: WebView, url: String) {
                 super.onPageCommitVisible(view, url)
                 // onPageFinished보다 먼저 호출 — 첫 픽셀이 화면에 그려지는 시점에 오버레이 제거
-                // about:blank 워밍업 호출은 무시
-                if (url == "about:blank") return
                 loadingOverlay.animate()
                     .alpha(0f)
                     .setDuration(200)
@@ -97,8 +90,6 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
-                // about:blank 워밍업 호출은 무시
-                if (url == "about:blank") return
                 // 웹앱이 Android 래퍼 내부 실행임을 안정적으로 감지할 수 있도록 플래그 주입
                 view.evaluateJavascript(
                     """
@@ -112,6 +103,17 @@ class MainActivity : AppCompatActivity() {
                     null
                 )
             }
+        }
+
+        // 웹앱에서 Android WebView 환경 감지 및 커스텀 스킴 제공
+        webView.addJavascriptInterface(AndroidBridge(this), "AndroidBridge")
+
+        // settings + WebViewClient 설정 직후 즉시 로드 — 불필요한 초기화 대기 없이 네트워크 요청 시작
+        // about:blank 워밍업 불필요 — 실제 URL 로드가 엔진 초기화를 겸함
+        if (intent?.data != null) {
+            handleIncomingUri(intent.data!!)
+        } else {
+            webView.loadUrl("https://moneylogs.vercel.app/")
         }
 
         // 뒤로가기 버튼 처리
@@ -144,12 +146,6 @@ class MainActivity : AppCompatActivity() {
         // Play Store 업데이트 체크
         checkForUpdate()
 
-        // 딥링크/OAuth 콜백으로 실행된 경우 intent URL을 먼저 처리
-        if (intent?.data != null) {
-            handleIncomingUri(intent.data!!)
-        } else {
-            webView.loadUrl("https://moneylogs.vercel.app/")
-        }
     }
 
     private fun checkForUpdate() {
