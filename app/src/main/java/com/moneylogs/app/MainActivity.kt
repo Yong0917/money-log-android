@@ -67,7 +67,6 @@ class MainActivity : AppCompatActivity() {
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
-            databaseEnabled = true          // IndexedDB 지원 활성화
             cacheMode = WebSettings.LOAD_DEFAULT  // HTTP 캐시 헤더 준수
             loadWithOverviewMode = true
             useWideViewPort = true
