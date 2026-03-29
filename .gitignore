@@ -16,5 +16,12 @@
 *.jks
 *.keystore
 
-# Google Services
+# Google Services (보안 - 절대 커밋 금지)
 google-services.json
+**/google-services.json
+
+# 모듈별 빌드 결과물
+app/build/
+
+# Kotlin 컴파일러 캐시
+.kotlin/
