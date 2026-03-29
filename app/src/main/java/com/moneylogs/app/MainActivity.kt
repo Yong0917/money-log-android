@@ -9,6 +9,7 @@ import android.os.Bundle
 import android.view.View
 import android.webkit.CookieManager
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.OnBackPressedCallback
@@ -22,6 +23,7 @@ import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateOptions
 import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.UpdateAvailability
+import java.lang.ref.WeakReference
 
 class MainActivity : AppCompatActivity() {
 
@@ -48,11 +50,16 @@ class MainActivity : AppCompatActivity() {
         )
 
         // 웹앱에서 Android WebView 환경 감지 및 커스텀 스킴 제공
-        webView.addJavascriptInterface(AndroidBridge(), "AndroidBridge")
+        webView.addJavascriptInterface(AndroidBridge(this), "AndroidBridge")
+
+        // WebView 엔진 미리 초기화 — 첫 실제 URL 로드 전 엔진 워밍업으로 지연 단축
+        webView.loadUrl("about:blank")
 
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
+            databaseEnabled = true          // IndexedDB 지원 활성화
+            cacheMode = WebSettings.LOAD_DEFAULT  // HTTP 캐시 헤더 준수
             loadWithOverviewMode = true
             useWideViewPort = true
             setSupportZoom(false)
@@ -76,8 +83,22 @@ class MainActivity : AppCompatActivity() {
                 return false
             }
 
+            override fun onPageCommitVisible(view: WebView, url: String) {
+                super.onPageCommitVisible(view, url)
+                // onPageFinished보다 먼저 호출 — 첫 픽셀이 화면에 그려지는 시점에 오버레이 제거
+                // about:blank 워밍업 호출은 무시
+                if (url == "about:blank") return
+                loadingOverlay.animate()
+                    .alpha(0f)
+                    .setDuration(200)
+                    .withEndAction { loadingOverlay.visibility = View.GONE }
+                    .start()
+            }
+
             override fun onPageFinished(view: WebView, url: String) {
                 super.onPageFinished(view, url)
+                // about:blank 워밍업 호출은 무시
+                if (url == "about:blank") return
                 // 웹앱이 Android 래퍼 내부 실행임을 안정적으로 감지할 수 있도록 플래그 주입
                 view.evaluateJavascript(
                     """
@@ -90,12 +111,6 @@ class MainActivity : AppCompatActivity() {
                     """.trimIndent(),
                     null
                 )
-                // 웹 로드 완료 → 오버레이를 300ms에 걸쳐 페이드아웃
-                loadingOverlay.animate()
-                    .alpha(0f)
-                    .setDuration(300)
-                    .withEndAction { loadingOverlay.visibility = View.GONE }
-                    .start()
             }
         }
 
@@ -194,14 +209,15 @@ class MainActivity : AppCompatActivity() {
 
                 else -> webView.loadUrl(uri.toString())
             }
-        } else {
-            webView.loadUrl(uri.toString())
         }
+        // 알 수 없는 스킴은 로드하지 않음 — 외부 앱의 악의적 Intent 방어
     }
 
     // 웹앱에 Android WebView 환경임을 알리는 브릿지
-    // @JavascriptInterface 메서드가 없으면 JS에서 객체가 노출되지 않으므로 반드시 메서드 필요
-    inner class AndroidBridge {
+    // static 중첩 클래스 + WeakReference: inner class는 Activity를 강참조하여 메모리 누수 위험
+    class AndroidBridge(activity: MainActivity) {
+        private val activityRef = WeakReference(activity)
+
         @android.webkit.JavascriptInterface
         fun getPlatform(): String = "android"
     }
@@ -218,12 +234,25 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 백그라운드에서 복귀 시 WebView JS 타이머·네트워크 재개
+        webView.onResume()
+        webView.resumeTimers()
     }
 
     override fun onPause() {
         super.onPause()
+        // 백그라운드 진입 시 WebView JS 타이머·네트워크 중단 → 배터리 절약
+        webView.onPause()
+        webView.pauseTimers()
         // 앱이 백그라운드로 가거나 종료될 때 쿠키를 디스크에 강제 저장
         // 이 없으면 프로세스 종료 시 세션 쿠키가 유실됨
         CookieManager.getInstance().flush()
+    }
+
+    override fun onDestroy() {
+        // WebView native 리소스 명시적 해제 — 메모리 누수 방지
+        webView.stopLoading()
+        webView.destroy()
+        super.onDestroy()
     }
 }

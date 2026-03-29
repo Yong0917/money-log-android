@@ -5,17 +5,11 @@
 # For more details, see
 #   http://developer.android.com/guide/developing/tools/proguard.html
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# WebView JavaScript Interface 보호 — R8이 @JavascriptInterface 메서드를 제거하지 않도록
+-keepclassmembers class com.moneylogs.app.MainActivity$AndroidBridge {
+    public *;
+}
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# 크래시 리포트 스택 트레이스 가독성 유지
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
