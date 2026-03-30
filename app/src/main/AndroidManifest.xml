@@ -39,6 +39,12 @@
                     android:host="auth-callback" />
             </intent-filter>
 
+            <!-- FCM 시스템 알림 탭 시 MainActivity 재사용 -->
+            <intent-filter>
+                <action android:name="OPEN_LEDGER" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
         </activity>
 
         <!-- FCM 메시지 수신 서비스 -->

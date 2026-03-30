@@ -252,12 +252,19 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // OAuth 결과 딥링크로 앱이 다시 열릴 때 호출됨
+    // OAuth 결과 딥링크 또는 알림 탭으로 앱이 다시 열릴 때 호출됨
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        intent.data?.let { uri ->
-            handleIncomingUri(uri)
+        // Uri 딥링크 (OAuth 콜백 등) 우선 처리
+        if (intent.data != null) {
+            handleIncomingUri(intent.data!!)
+            return
+        }
+        // 알림 탭 딥링크 (앱이 백그라운드/포그라운드 상태일 때)
+        intent.getStringExtra(MoneyLogsFirebaseMessagingService.EXTRA_SCREEN)?.let { screen ->
+            val recurringId = intent.getStringExtra(MoneyLogsFirebaseMessagingService.EXTRA_RECURRING_ID)
+            navigateWebViewToScreen(screen, recurringId)
         }
     }
 
