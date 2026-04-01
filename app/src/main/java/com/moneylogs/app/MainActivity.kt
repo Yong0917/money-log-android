@@ -14,8 +14,10 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Base64
 import android.view.View
+import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
+import android.webkit.PermissionRequest
 import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
@@ -36,6 +38,7 @@ import com.google.android.play.core.appupdate.AppUpdateOptions
 import com.google.android.play.core.install.model.AppUpdateType
 import com.google.android.play.core.install.model.UpdateAvailability
 import com.google.firebase.messaging.FirebaseMessaging
+import com.moneylogs.app.BuildConfig
 import java.lang.ref.WeakReference
 
 class MainActivity : AppCompatActivity() {
@@ -49,9 +52,17 @@ class MainActivity : AppCompatActivity() {
     // 알림 권한 요청 런처 (Android 13+)
     private lateinit var notificationPermissionLauncher: ActivityResultLauncher<String>
 
-    // 파일 선택 콜백 (엑셀 가져오기용)
+    // 파일 선택 콜백 (엑셀 가져오기 및 영수증 첨부용)
     private var fileUploadCallback: ValueCallback<Array<Uri>>? = null
     private lateinit var filePickerLauncher: ActivityResultLauncher<String>
+
+    // 카메라 촬영 런처 (영수증 스캔 - 카메라로 찍기)
+    private var cameraImageUri: Uri? = null
+    private lateinit var cameraLauncher: ActivityResultLauncher<Uri>
+
+    // WebView onPermissionRequest 용 카메라 런타임 권한 요청
+    private var pendingPermissionRequest: PermissionRequest? = null
+    private lateinit var cameraPermissionLauncher: ActivityResultLauncher<String>
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // 알림 권한 런처 초기화 (onCreate 초반부에 등록해야 함)
@@ -59,7 +70,7 @@ class MainActivity : AppCompatActivity() {
             ActivityResultContracts.RequestPermission()
         ) { /* 허용/거부 결과 — 별도 처리 없이 FCM 토큰만 가져감 */ }
 
-        // 파일 선택 런처 초기화 (엑셀 가져오기: <input type="file"> 지원)
+        // 파일 선택 런처 초기화 (갤러리/파일: <input type="file"> 지원)
         filePickerLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
             if (uri != null) {
                 fileUploadCallback?.onReceiveValue(arrayOf(uri))
@@ -67,6 +78,30 @@ class MainActivity : AppCompatActivity() {
                 fileUploadCallback?.onReceiveValue(null)
             }
             fileUploadCallback = null
+        }
+
+        // WebView getUserMedia() 카메라 권한 런처 (onPermissionRequest 연동)
+        cameraPermissionLauncher = registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { granted ->
+            val request = pendingPermissionRequest ?: return@registerForActivityResult
+            pendingPermissionRequest = null
+            if (granted) {
+                request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
+            } else {
+                request.deny()
+            }
+        }
+
+        // 카메라 촬영 런처 초기화 (<input capture="environment"> 지원)
+        cameraLauncher = registerForActivityResult(ActivityResultContracts.TakePicture()) { success ->
+            if (success && cameraImageUri != null) {
+                fileUploadCallback?.onReceiveValue(arrayOf(cameraImageUri!!))
+            } else {
+                fileUploadCallback?.onReceiveValue(null)
+            }
+            fileUploadCallback = null
+            cameraImageUri = null
         }
 
         // 스플래시 스크린 설치 — setContentView 전에 호출해야 함
@@ -106,15 +141,52 @@ class MainActivity : AppCompatActivity() {
                 // 이전 콜백이 남아있으면 취소 처리
                 fileUploadCallback?.onReceiveValue(null)
                 fileUploadCallback = filePathCallback
-                // 웹에서 요청한 accept 타입을 그대로 전달 (image/* 등)
-                val acceptTypes = fileChooserParams.acceptTypes
-                val mimeType = if (!acceptTypes.isNullOrEmpty() && acceptTypes[0].isNotBlank()) {
-                    acceptTypes[0]
+
+                // capture="environment" 속성이 있으면 카메라 앱으로 직접 촬영
+                if (fileChooserParams.isCaptureEnabled) {
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.Images.Media.DISPLAY_NAME, "receipt_${System.currentTimeMillis()}.jpg")
+                        put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+                    }
+                    cameraImageUri = contentResolver.insert(
+                        MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+                        contentValues
+                    )
+                    if (cameraImageUri != null) {
+                        cameraLauncher.launch(cameraImageUri!!)
+                    } else {
+                        fileUploadCallback?.onReceiveValue(null)
+                        fileUploadCallback = null
+                    }
                 } else {
-                    "*/*"
+                    // 갤러리 / 파일 선택
+                    val acceptTypes = fileChooserParams.acceptTypes
+                    val mimeType = if (!acceptTypes.isNullOrEmpty() && acceptTypes[0].isNotBlank()) {
+                        acceptTypes[0]
+                    } else {
+                        "*/*"
+                    }
+                    filePickerLauncher.launch(mimeType)
                 }
-                filePickerLauncher.launch(mimeType)
                 return true
+            }
+
+            // WebView getUserMedia() 등 카메라 접근 요청 → Android 런타임 권한 연동
+            override fun onPermissionRequest(request: PermissionRequest?) {
+                request ?: return
+                val cameraRequested = request.resources.contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+                if (!cameraRequested) {
+                    request.deny()
+                    return
+                }
+                if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA)
+                    == PackageManager.PERMISSION_GRANTED
+                ) {
+                    request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
+                } else {
+                    pendingPermissionRequest = request
+                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                }
             }
         }
 
@@ -155,9 +227,12 @@ class MainActivity : AppCompatActivity() {
                             localStorage.setItem('moneylogs:platform', 'android');
                           } catch (e) {}
                         })();
-                    """.trimIndent(),
-                    null
-                )
+                    """.trimIndent()
+                ) { result ->
+                    if (BuildConfig.DEBUG && result != null && result != "null") {
+                        Log.d(TAG, "JS 주입 결과: $result")
+                    }
+                }
             }
         }
 
@@ -225,7 +300,7 @@ class MainActivity : AppCompatActivity() {
         }
         // 권한 여부와 관계없이 토큰 캐싱 (토큰은 권한 없이도 발급됨)
         FirebaseMessaging.getInstance().token.addOnSuccessListener { token ->
-            getSharedPreferences(MoneyLogsFirebaseMessagingService.PREFS_NAME, Context.MODE_PRIVATE)
+            MoneyLogsFirebaseMessagingService.getEncryptedPrefs(this)
                 .edit()
                 .putString(MoneyLogsFirebaseMessagingService.KEY_FCM_TOKEN, token)
                 .apply()
@@ -303,7 +378,12 @@ class MainActivity : AppCompatActivity() {
                     webView.loadUrl(callbackUrl)
                 }
 
-                else -> webView.loadUrl(uri.toString())
+                else -> {
+                    // 알 수 없는 호스트는 로드하지 않음 — 외부 앱의 악의적 Intent 스푸핑 방어
+                    if (BuildConfig.DEBUG) {
+                        Log.w(TAG, "알 수 없는 딥링크 호스트 무시: ${uri.host}")
+                    }
+                }
             }
         }
         // 알 수 없는 스킴은 로드하지 않음 — 외부 앱의 악의적 Intent 방어
@@ -317,15 +397,11 @@ class MainActivity : AppCompatActivity() {
         @JavascriptInterface
         fun getPlatform(): String = "android"
 
-        // 웹앱에서 호출 → SharedPreferences에 캐싱된 FCM 토큰 반환
+        // 웹앱에서 호출 → EncryptedSharedPreferences에 캐싱된 FCM 토큰 반환
         @JavascriptInterface
         fun getFcmToken(): String {
             val activity = activityRef.get() ?: return ""
-            return activity
-                .getSharedPreferences(
-                    MoneyLogsFirebaseMessagingService.PREFS_NAME,
-                    Context.MODE_PRIVATE
-                )
+            return MoneyLogsFirebaseMessagingService.getEncryptedPrefs(activity)
                 .getString(MoneyLogsFirebaseMessagingService.KEY_FCM_TOKEN, "") ?: ""
         }
 
@@ -334,6 +410,15 @@ class MainActivity : AppCompatActivity() {
         fun downloadFile(base64Data: String, filename: String, mimeType: String) {
             val activity = activityRef.get() ?: return
             try {
+                // Base64 입력 크기 제한 (50MB) — 과도한 입력으로 인한 메모리 폭발 방지
+                val maxBase64Length = 50L * 1024 * 1024 * 4 / 3
+                if (base64Data.length > maxBase64Length) {
+                    activity.runOnUiThread {
+                        Toast.makeText(activity, "파일이 너무 큽니다 (최대 50MB)", Toast.LENGTH_SHORT).show()
+                    }
+                    return
+                }
+
                 val decoded = Base64.decode(base64Data, Base64.DEFAULT)
 
                 val contentValues = ContentValues().apply {
@@ -368,6 +453,10 @@ class MainActivity : AppCompatActivity() {
 
                 activity.runOnUiThread {
                     Toast.makeText(activity, "📥 $filename 저장됨", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: SecurityException) {
+                activity.runOnUiThread {
+                    Toast.makeText(activity, "저장 권한이 없습니다", Toast.LENGTH_SHORT).show()
                 }
             } catch (e: Exception) {
                 activity.runOnUiThread {
@@ -409,5 +498,9 @@ class MainActivity : AppCompatActivity() {
         webView.stopLoading()
         webView.destroy()
         super.onDestroy()
+    }
+
+    companion object {
+        private const val TAG = "MainActivity"
     }
 }

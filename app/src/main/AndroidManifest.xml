@@ -41,15 +41,15 @@
                     android:host="auth-callback" />
             </intent-filter>
 
-            <!-- FCM 시스템 알림 탭 시 MainActivity 재사용 -->
+            <!-- FCM 시스템 알림 탭 시 MainActivity 재사용 (패키지명 접두사로 타 앱 스푸핑 방지) -->
             <intent-filter>
-                <action android:name="OPEN_LEDGER" />
+                <action android:name="com.moneylogs.app.OPEN_LEDGER" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
             <!-- 월별 리포트 알림 탭 시 MainActivity 재사용 -->
             <intent-filter>
-                <action android:name="OPEN_REPORT" />
+                <action android:name="com.moneylogs.app.OPEN_REPORT" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 

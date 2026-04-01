@@ -1,19 +1,11 @@
-<?xml version="1.0" encoding="utf-8"?><!--
-   Sample data extraction rules file; uncomment and customize as necessary.
-   See https://developer.android.com/about/versions/12/backup-restore#xml-changes
-   for details.
--->
+<?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <!-- FCM 토큰 등 민감 정보가 담긴 SharedPreferences를 클라우드 백업에서 제외 (Android 12+) -->
+        <exclude domain="sharedpref" path="moneylogs_secure_prefs.xml" />
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <!-- 기기 이전 시에도 FCM 토큰 제외 (새 기기에서 토큰이 재발급됨) -->
+        <exclude domain="sharedpref" path="moneylogs_secure_prefs.xml" />
     </device-transfer>
-    -->
 </data-extraction-rules>
