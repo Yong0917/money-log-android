@@ -96,7 +96,7 @@ class MainActivity : AppCompatActivity() {
             userAgentString = "$userAgentString MoneyLogsApp/Android"
         }
 
-        // 파일 선택 다이얼로그 처리 (엑셀 가져오기용 <input type="file"> 지원)
+        // 파일 선택 다이얼로그 처리 (<input type="file"> 지원 — 엑셀 가져오기 및 영수증 첨부)
         webView.webChromeClient = object : WebChromeClient() {
             override fun onShowFileChooser(
                 webView: WebView,
@@ -106,7 +106,14 @@ class MainActivity : AppCompatActivity() {
                 // 이전 콜백이 남아있으면 취소 처리
                 fileUploadCallback?.onReceiveValue(null)
                 fileUploadCallback = filePathCallback
-                filePickerLauncher.launch("*/*")
+                // 웹에서 요청한 accept 타입을 그대로 전달 (image/* 등)
+                val acceptTypes = fileChooserParams.acceptTypes
+                val mimeType = if (!acceptTypes.isNullOrEmpty() && acceptTypes[0].isNotBlank()) {
+                    acceptTypes[0]
+                } else {
+                    "*/*"
+                }
+                filePickerLauncher.launch(mimeType)
                 return true
             }
         }
