@@ -45,6 +45,12 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
 
+            <!-- 월별 리포트 알림 탭 시 MainActivity 재사용 -->
+            <intent-filter>
+                <action android:name="OPEN_REPORT" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+
         </activity>
 
         <!-- FCM 메시지 수신 서비스 -->
