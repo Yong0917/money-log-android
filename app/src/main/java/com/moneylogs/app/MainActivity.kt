@@ -64,6 +64,9 @@ class MainActivity : AppCompatActivity() {
     private var pendingPermissionRequest: PermissionRequest? = null
     private lateinit var cameraPermissionLauncher: ActivityResultLauncher<String>
 
+    // 파일 picker 경로에서 카메라 권한 요청 후 카메라 실행
+    private lateinit var fileCameraPermissionLauncher: ActivityResultLauncher<String>
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // 알림 권한 런처 초기화 (onCreate 초반부에 등록해야 함)
         notificationPermissionLauncher = registerForActivityResult(
@@ -102,6 +105,19 @@ class MainActivity : AppCompatActivity() {
             }
             fileUploadCallback = null
             cameraImageUri = null
+        }
+
+        // 파일 picker 카메라 권한 런처 — 권한 허용 후 카메라 실행
+        fileCameraPermissionLauncher = registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { granted ->
+            if (granted && cameraImageUri != null) {
+                cameraLauncher.launch(cameraImageUri!!)
+            } else {
+                fileUploadCallback?.onReceiveValue(null)
+                fileUploadCallback = null
+                cameraImageUri = null
+            }
         }
 
         // 스플래시 스크린 설치 — setContentView 전에 호출해야 함
@@ -152,11 +168,16 @@ class MainActivity : AppCompatActivity() {
                         MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
                         contentValues
                     )
-                    if (cameraImageUri != null) {
-                        cameraLauncher.launch(cameraImageUri!!)
-                    } else {
+                    if (cameraImageUri == null) {
                         fileUploadCallback?.onReceiveValue(null)
                         fileUploadCallback = null
+                    } else if (ContextCompat.checkSelfPermission(this@MainActivity, Manifest.permission.CAMERA)
+                        == PackageManager.PERMISSION_GRANTED
+                    ) {
+                        cameraLauncher.launch(cameraImageUri!!)
+                    } else {
+                        // 권한 미허용 → 요청 후 결과에서 카메라 실행
+                        fileCameraPermissionLauncher.launch(Manifest.permission.CAMERA)
                     }
                 } else {
                     // 갤러리 / 파일 선택
