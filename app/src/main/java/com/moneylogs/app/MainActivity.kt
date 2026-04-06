@@ -25,6 +25,8 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.ActivityResultLauncher
 import androidx.activity.result.IntentSenderRequest
@@ -295,8 +297,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Play Store 업데이트 체크
-        checkForUpdate()
+        // Play Store 업데이트 체크 — 초기 렌더링 이후 실행하여 WebView 로드와 경쟁 방지
+        Handler(Looper.getMainLooper()).postDelayed({ checkForUpdate() }, 1000L)
 
         // 알림 권한 요청 (Android 13+) + FCM 토큰 캐싱
         requestNotificationPermissionAndCacheToken()
