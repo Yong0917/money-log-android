@@ -25,3 +25,7 @@ app/build/
 
 # Kotlin 컴파일러 캐시
 .kotlin/
+
+# Claude Code
+.agents/
+CLAUDE.md
