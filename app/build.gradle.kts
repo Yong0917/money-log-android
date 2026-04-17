@@ -15,8 +15,8 @@ android {
         applicationId = "com.moneylogs.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 23
-        versionName = "1.23"
+        versionCode = 24
+        versionName = "1.24"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -50,6 +50,7 @@ dependencies {
     implementation(libs.play.app.update.ktx)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.security.crypto)
+    implementation(libs.androidx.webkit)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging.ktx)
     testImplementation(libs.junit)

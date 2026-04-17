@@ -35,6 +35,8 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.webkit.WebSettingsCompat
+import androidx.webkit.WebViewFeature
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
 import com.google.android.play.core.appupdate.AppUpdateOptions
 import com.google.android.play.core.install.model.AppUpdateType
@@ -131,11 +133,19 @@ class MainActivity : AppCompatActivity() {
         webView = findViewById(R.id.webView)
         loadingOverlay = findViewById(R.id.loadingOverlay)
 
-        // 오버레이 배경색을 시스템 테마에 맞게 설정
+        // 오버레이 배경색을 시스템 테마에 맞게 설정 (colors.xml의 bg_light/bg_dark과 동기화)
         val isNightMode = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
         loadingOverlay.setBackgroundColor(
-            if (isNightMode) Color.parseColor("#121317") else Color.parseColor("#FAF8F5")
+            if (isNightMode) Color.parseColor("#121317") else Color.parseColor("#FAF8F3")
         )
+
+        // WebView 자체 배경색을 웹 스플래시 배경(#FAF8F3)과 맞춰 첫 페인트 전 흰색 깜빡임 제거
+        webView.setBackgroundColor(Color.parseColor("#FAF8F3"))
+
+        // 디버그 빌드에서만 chrome://inspect 원격 디버깅 허용
+        if (BuildConfig.DEBUG) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
 
         // settings를 먼저 적용해야 loadUrl 시점에 모든 설정이 유효함
         webView.settings.apply {
@@ -145,9 +155,19 @@ class MainActivity : AppCompatActivity() {
             loadWithOverviewMode = true
             useWideViewPort = true
             setSupportZoom(false)
+            // 광고성 미디어가 제스처 없이 자동재생되는 것 차단
+            mediaPlaybackRequiresUserGesture = true
             // JS에서 User-Agent로 WebView 환경 감지 가능하도록 커스텀 문자열 추가
             userAgentString = "$userAgentString MoneyLogsApp/Android"
         }
+
+        // 오프스크린 프리래스터: 화면 밖 콘텐츠를 미리 래스터화해 스크롤/전환 부드러움 향상
+        if (WebViewFeature.isFeatureSupported(WebViewFeature.OFF_SCREEN_PRERASTER)) {
+            WebSettingsCompat.setOffscreenPreRaster(webView.settings, true)
+        }
+
+        // 렌더러 프로세스 우선순위를 IMPORTANT로 — 백그라운드 전환 시에도 렌더러가 빠르게 죽지 않도록
+        webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true)
 
         // 파일 선택 다이얼로그 처리 (<input type="file"> 지원 — 엑셀 가져오기 및 영수증 첨부)
         webView.webChromeClient = object : WebChromeClient() {
@@ -297,8 +317,8 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Play Store 업데이트 체크 — 초기 렌더링 이후 실행하여 WebView 로드와 경쟁 방지
-        Handler(Looper.getMainLooper()).postDelayed({ checkForUpdate() }, 1000L)
+        // Play Store 업데이트 체크 — 웹 스플래시(1초) 종료 후 첫 페이지 렌더 안정화 시점으로 지연
+        Handler(Looper.getMainLooper()).postDelayed({ checkForUpdate() }, 2500L)
 
         // 알림 권한 요청 (Android 13+) + FCM 토큰 캐싱
         requestNotificationPermissionAndCacheToken()
