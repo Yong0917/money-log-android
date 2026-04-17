@@ -56,6 +56,14 @@
 
         </activity>
 
+        <!-- Firebase ContentProvider 자동 초기화 제거 — 앱 시작 시 메인 스레드 블로킹 방지.
+             대신 MoneyLogsApp.onCreate()에서 백그라운드로 수동 초기화.
+             푸시 수신 시 FirebaseMessagingService가 자체적으로 초기화하므로 영향 없음. -->
+        <provider
+            android:name="com.google.firebase.provider.FirebaseInitProvider"
+            android:authorities="${applicationId}.firebaseinitprovider"
+            tools:node="remove" />
+
         <!-- FCM 메시지 수신 서비스 -->
         <service
             android:name=".MoneyLogsFirebaseMessagingService"
@@ -64,6 +72,15 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- WebView: SafeBrowsing DB 초기화 비용 제거 (도메인이 moneylogs.vercel.app 하나로 고정되고 network_security_config에서 이미 제한) -->
+        <meta-data
+            android:name="android.webkit.WebView.EnableSafeBrowsing"
+            android:value="false" />
+        <!-- WebView: Google UMA 메트릭 송신 opt-out -->
+        <meta-data
+            android:name="android.webkit.WebView.MetricsOptOut"
+            android:value="true" />
 
         <!-- 알림 채널 기본 아이콘 / 색상 -->
         <meta-data
