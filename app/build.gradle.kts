@@ -15,8 +15,8 @@ android {
         applicationId = "com.moneylogs.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 25
-        versionName = "1.25"
+        versionCode = 27
+        versionName = "1.27"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
