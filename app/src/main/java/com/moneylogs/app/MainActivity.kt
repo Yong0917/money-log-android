@@ -1,19 +1,21 @@
 package com.moneylogs.app
 
 import android.Manifest
+import android.animation.ObjectAnimator
 import android.app.Activity
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.res.Configuration
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Base64
 import android.view.View
+import android.view.animation.PathInterpolator
 import android.util.Log
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
@@ -34,7 +36,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.core.content.ContextCompat
-import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.core.view.doOnLayout
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import com.google.android.play.core.appupdate.AppUpdateManagerFactory
@@ -49,6 +51,11 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var webView: WebView
     private lateinit var loadingOverlay: View
+
+    // 머니로그 디자인 splash 상태
+    private var splashShimmerAnimator: ObjectAnimator? = null
+    private var splashShownAt: Long = 0L
+    private var splashHidden: Boolean = false
 
     // 업데이트 플로우 결과 수신 런처
     private lateinit var updateLauncher: ActivityResultLauncher<IntentSenderRequest>
@@ -124,20 +131,15 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // 스플래시 스크린 설치 — setContentView 전에 호출해야 함
-        installSplashScreen()
-
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         webView = findViewById(R.id.webView)
         loadingOverlay = findViewById(R.id.loadingOverlay)
 
-        // 오버레이 배경색을 시스템 테마에 맞게 설정 (colors.xml의 bg_light/bg_dark과 동기화)
-        val isNightMode = (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
-        loadingOverlay.setBackgroundColor(
-            if (isNightMode) Color.parseColor("#121317") else Color.parseColor("#FAF8F3")
-        )
+        // 머니로그 디자인 splash 시작 시각 기록 + shimmer 무한 애니메이션 시작
+        splashShownAt = SystemClock.elapsedRealtime()
+        startSplashShimmer()
 
         // WebView 자체 배경색을 웹 스플래시 배경(#FAF8F3)과 맞춰 첫 페인트 전 흰색 깜빡임 제거
         webView.setBackgroundColor(Color.parseColor("#FAF8F3"))
@@ -251,12 +253,9 @@ class MainActivity : AppCompatActivity() {
 
             override fun onPageCommitVisible(view: WebView, url: String) {
                 super.onPageCommitVisible(view, url)
-                // onPageFinished보다 먼저 호출 — 첫 픽셀이 화면에 그려지는 시점에 오버레이 제거
-                loadingOverlay.animate()
-                    .alpha(0f)
-                    .setDuration(200)
-                    .withEndAction { loadingOverlay.visibility = View.GONE }
-                    .start()
+                // onPageFinished보다 먼저 호출 — 첫 픽셀이 화면에 그려지는 시점에 splash 숨김 시도.
+                // OAuth callback / 알림 탭 진입 등으로 다중 호출 가능하나 hideSplashWhenReady() 가 splashHidden 플래그로 first-only.
+                hideSplashWhenReady()
             }
 
             override fun onPageFinished(view: WebView, url: String) {
@@ -317,8 +316,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        // Play Store 업데이트 체크 — 웹 스플래시(1초) 종료 후 첫 페이지 렌더 안정화 시점으로 지연
-        Handler(Looper.getMainLooper()).postDelayed({ checkForUpdate() }, 2500L)
+        // Play Store 업데이트 체크 — splash 종료 + 첫 페이지 렌더 안정화 후 호출
+        Handler(Looper.getMainLooper()).postDelayed({ checkForUpdate() }, 1500L)
+
+        // 안전망: 페이지 로드 실패/지연 시 splash가 영원히 떠있는 것 방지 (5초 후 강제 숨김)
+        loadingOverlay.postDelayed({ hideSplashWhenReady() }, 5000L)
 
         // 알림 권한 요청 (Android 13+) + FCM 토큰 캐싱
         requestNotificationPermissionAndCacheToken()
@@ -537,10 +539,67 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        // shimmer animator 정지 — ViewTreeObserver/View 참조 누수 방지
+        splashShimmerAnimator?.cancel()
+        splashShimmerAnimator = null
+
         // WebView native 리소스 명시적 해제 — 메모리 누수 방지
         webView.stopLoading()
         webView.destroy()
         super.onDestroy()
+    }
+
+    /**
+     * 웹 SplashScreen.tsx 의 shimmerSlide 무한 애니메이션 재현.
+     * track 폭이 layout 후 결정되므로 doOnLayout 콜백 안에서 시작.
+     */
+    private fun startSplashShimmer() {
+        val track = findViewById<View>(R.id.splashShimmerTrack)
+        val bar = findViewById<View>(R.id.splashShimmerBar)
+        track.doOnLayout {
+            val trackWidth = track.width.toFloat()
+            // bar 폭은 track 폭의 35% (웹의 width: 35% 대응)
+            bar.layoutParams = bar.layoutParams.also {
+                it.width = (trackWidth * 0.35f).toInt()
+            }
+            bar.requestLayout()
+
+            // 웹 SplashScreen 의 shimmerSlide: -40% → 120%
+            val anim = ObjectAnimator.ofFloat(
+                bar,
+                "translationX",
+                -trackWidth * 0.4f,
+                trackWidth * 1.2f
+            ).apply {
+                duration = 2200L
+                repeatCount = ObjectAnimator.INFINITE
+                interpolator = PathInterpolator(0.4f, 0f, 0.6f, 1f)
+            }
+            anim.start()
+            splashShimmerAnimator = anim
+        }
+    }
+
+    /**
+     * splash 오버레이를 숨김. 최소 600ms 노출 보장 후 220ms fade-out.
+     * onPageCommitVisible / 안전망 timeout 어디서 호출되더라도 splashHidden 플래그로 first-only.
+     */
+    private fun hideSplashWhenReady() {
+        if (splashHidden) return
+        splashHidden = true
+        val elapsed = SystemClock.elapsedRealtime() - splashShownAt
+        val remaining = (600L - elapsed).coerceAtLeast(0L)
+        loadingOverlay.postDelayed({
+            loadingOverlay.animate()
+                .alpha(0f)
+                .setDuration(220L)
+                .withEndAction {
+                    loadingOverlay.visibility = View.GONE
+                    splashShimmerAnimator?.cancel()
+                    splashShimmerAnimator = null
+                }
+                .start()
+        }, remaining)
     }
 
     companion object {

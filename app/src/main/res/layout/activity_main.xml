@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
@@ -8,11 +9,111 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- 웹 로드 완료 전까지 보이는 오버레이 — onPageFinished에서 페이드아웃 -->
-    <View
+    <!-- 머니로그 디자인 splash 오버레이 — onPageCommitVisible + 최소 600ms 후 fade-out -->
+    <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/loadingOverlay"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:background="@color/bg_light" />
+        android:background="@color/bg_light"
+        android:clickable="true"
+        android:focusable="true"
+        android:clipChildren="false"
+        android:clipToPadding="false">
+
+        <!-- Warm orb: 화면 너비의 72% 직경, 우측 상단 일부가 화면 밖.
+             translation 어림값(64dp)은 작은 폰 기준 18vw 근사. 큰 화면에서 비율 어긋남은 디자인 무드용으로 허용. -->
+        <ImageView
+            android:id="@+id/splashOrbWarm"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:src="@drawable/splash_orb_warm"
+            app:layout_constraintWidth_percent="0.72"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintEnd_toEndOf="parent"
+            app:layout_constraintTop_toTopOf="parent"
+            android:translationX="64dp"
+            android:translationY="-64dp"
+            android:importantForAccessibility="no" />
+
+        <!-- Cool orb: 화면 너비의 56% 직경, 좌측 하단 일부가 화면 밖 -->
+        <ImageView
+            android:id="@+id/splashOrbCool"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:src="@drawable/splash_orb_cool"
+            app:layout_constraintWidth_percent="0.56"
+            app:layout_constraintDimensionRatio="1:1"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            android:translationX="-32dp"
+            android:translationY="32dp"
+            android:importantForAccessibility="no" />
+
+        <!-- 중앙 콘텐츠: 아이콘 + 머니로그 + tagline -->
+        <LinearLayout
+            android:id="@+id/splashCenter"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <ImageView
+                android:id="@+id/splashIcon"
+                android:layout_width="96dp"
+                android:layout_height="96dp"
+                android:src="@drawable/splash_app_icon"
+                android:elevation="6dp"
+                android:contentDescription="@string/app_name" />
+
+            <TextView
+                android:id="@+id/splashName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="28dp"
+                android:text="머니로그"
+                android:textSize="26sp"
+                android:textStyle="bold"
+                android:textColor="#1C1714"
+                android:fontFamily="serif"
+                android:letterSpacing="-0.01" />
+
+            <TextView
+                android:id="@+id/splashTagline"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="나의 하루 기록"
+                android:textSize="11sp"
+                android:textColor="#B8A898"
+                android:textAllCaps="true"
+                android:letterSpacing="0.18" />
+        </LinearLayout>
+
+        <!-- shimmer 로딩 바 -->
+        <FrameLayout
+            android:id="@+id/splashShimmerTrack"
+            android:layout_width="52dp"
+            android:layout_height="2dp"
+            android:layout_marginBottom="68dp"
+            android:background="@drawable/splash_shimmer_track"
+            android:clipChildren="true"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
+
+            <!-- layout_width 임시값. 실제 폭은 코드에서 trackWidth * 0.35 로 덮어씀.
+                 FrameLayout 자식에서 0dp는 0px로 측정되어 안 보이게 되므로 임시값 필수. -->
+            <View
+                android:id="@+id/splashShimmerBar"
+                android:layout_width="18dp"
+                android:layout_height="match_parent"
+                android:background="@drawable/splash_shimmer_bar" />
+        </FrameLayout>
+
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
 </FrameLayout>

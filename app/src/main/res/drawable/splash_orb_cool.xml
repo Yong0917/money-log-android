@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 웹 SplashScreen 의 orb-2 대응: rgba(110,150,170,0.14) → transparent radial -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <gradient
+        android:type="radial"
+        android:gradientRadius="50%p"
+        android:startColor="#246E96AA"
+        android:endColor="#006E96AA" />
+</shape>

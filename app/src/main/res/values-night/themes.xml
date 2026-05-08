@@ -4,10 +4,7 @@
         <item name="android:windowBackground">@color/bg_dark</item>
     </style>
 
-    <!-- 다크모드 스플래시 오버라이드 -->
-    <style name="Theme.MoneyLogs.Splash" parent="Theme.SplashScreen">
-        <item name="windowSplashScreenBackground">@color/bg_dark</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
-        <item name="postSplashScreenTheme">@style/Theme.MoneyLogs</item>
-    </style>
+    <!-- 주의: Theme.MoneyLogs.Splash 의 night 오버라이드를 두지 않음.
+         splash 단계는 다크 사용자에게도 라이트 배경을 강제 (values/themes.xml 정의 적용).
+         웹 SplashScreen이 항상 라이트였으므로 디자인 일관성 유지. -->
 </resources>

@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- shimmer 진행 바: 좌우 투명 → 중앙 rgba(160,120,70,0.75) 그라디언트 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:type="linear"
+        android:angle="0"
+        android:startColor="#00A07846"
+        android:centerColor="#BFA07846"
+        android:endColor="#00A07846" />
+    <corners android:radius="999dp" />
+</shape>
