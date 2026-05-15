@@ -286,7 +286,9 @@ class MainActivity : AppCompatActivity() {
         if (intent?.data != null) {
             handleIncomingUri(intent.data!!)
         } else {
-            webView.loadUrl("https://moneylogs.vercel.app/")
+            // 홈(`/`)의 redirect 라운드트립을 절약하기 위해 가계부 페이지로 직접 진입.
+            // 비로그인 상태이면 게스트 모드로 자동 진입(샘플 데이터 노출).
+            webView.loadUrl("https://moneylogs.vercel.app/ledger/daily")
         }
 
         // 뒤로가기 버튼 처리
